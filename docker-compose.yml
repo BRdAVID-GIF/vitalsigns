@@ -1,0 +1,49 @@
+services:
+  vitales_db:
+    image: mysql:8.0
+    container_name: vitales_db
+    environment:
+      MYSQL_ROOT_PASSWORD: admin
+      MYSQL_DATABASE: hospital_db
+      MYSQL_ROOT_HOST: '%'
+    ports:
+      - "3307:3306"
+    volumes:
+      - ./db:/docker-entrypoint-initdb.d
+    restart: always
+    # El healthcheck verifica que MySQL esté listo para recibir consultas
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-padmin"]
+      timeout: 5s
+      interval: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    container_name: vitales_backend
+    # Ahora espera a que la DB esté "Sana" (Healthy), no solo encendida
+    depends_on:
+      vitales_db:
+        condition: service_healthy
+    restart: always
+
+  frontend:
+    build: ./frontend
+    container_name: vitales_frontend
+    ports:
+      - "8501:8501"
+    depends_on:
+      vitales_db:
+        condition: service_healthy
+    restart: always
+
+  emqx:
+    image: emqx/emqx:5.1.0
+    container_name: vitales_broker
+    environment:
+      - "EMQX_NODE__COOKIE=vitales_secret_cookie"
+    ports:
+      - "1883:1883"
+      - "18083:18083"
+      - "8083:8083"
+    restart: always
