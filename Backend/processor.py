@@ -11,10 +11,10 @@ def get_db_connection():
     while True:
         try:
             conn = mysql.connector.connect(
-                host="vitales_db",
+                host="mysql.ferrocarril.interno",
                 user="root",
-                password="admin",
-                database="hospital_db",
+                password="pAtBbDuWBcjCxlGqGAsLLlBbIXzPBBIA",
+                database="railway",
                 port=3306
             )
             print("✅ Conectado a MySQL exitosamente!")

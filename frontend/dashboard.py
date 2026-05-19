@@ -15,7 +15,7 @@ st.markdown("""
 
 st.title("🏥 Sistema de Monitoreo de Signos Vitales")
 
-engine = create_engine("mysql+mysqlconnector://root:admin@vitales_db:3306/hospital_db")
+engine = create_engine("mysql+mysqlconnector://root:pAtBbDuWBcjCxlGqGAsLLlBbIXzPBBIA@mysql.ferrocarril.interno:3306/railway")
 
 
 def get_data():
