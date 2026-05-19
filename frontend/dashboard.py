@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import time
+import os
 from sqlalchemy import create_engine
 
 st.set_page_config(page_title="Monitor Vitales Pro", layout="wide")
@@ -15,7 +16,16 @@ st.markdown("""
 
 st.title("🏥 Sistema de Monitoreo de Signos Vitales")
 
-engine = create_engine("mysql+mysqlconnector://root:pAtBbDuWBcjCxlGqGAsLLlBbIXzPBBIA@mysql.ferrocarril.interno:3306/railway")
+# --- CONEXIÓN DB (desde variables de entorno) ---
+DB_HOST = os.environ.get("DB_HOST", "vitales_db")
+DB_USER = os.environ.get("DB_USER", "root")
+DB_PASSWORD = os.environ.get("DB_PASSWORD", "admin")
+DB_NAME = os.environ.get("DB_NAME", "hospital_db")
+DB_PORT = os.environ.get("DB_PORT", "3306")
+
+engine = create_engine(
+    f"mysql+mysqlconnector://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+)
 
 
 def get_data():
@@ -30,12 +40,12 @@ df = get_data()
 if not df.empty:
     col1, col2, col3 = st.columns(3)
     val_corp = df.iloc[0]['temp_corporal']
-    val_amb  = df.iloc[0]['temp_ambiente']
+    val_amb = df.iloc[0]['temp_ambiente']
 
     col1.metric("TEMP. CORPORAL", f"{val_corp} °C")
 
     estado = "NORMAL" if val_corp < 37.5 else "FIEBRE"
-    color  = "#00ff00" if estado == "NORMAL" else "#ff4b4b"
+    color = "#00ff00" if estado == "NORMAL" else "#ff4b4b"
     col2.markdown(
         f"<h3 style='text-align:center; color:{color}'>{estado}</h3>",
         unsafe_allow_html=True
@@ -57,7 +67,6 @@ if not df.empty:
         margin=dict(l=10, r=10, t=30, b=10)
     )
 
-    # ✅ Sin while True, sin key duplicada — Streamlit maneja solo el ID
     st.plotly_chart(fig, width='stretch')
 
     with st.expander("Ver registro de lecturas"):
@@ -66,6 +75,5 @@ if not df.empty:
 else:
     st.info("Esperando datos...")
 
-# ✅ Espera 2 segundos y relanza el script completo desde cero — patrón oficial
 time.sleep(2)
 st.rerun()

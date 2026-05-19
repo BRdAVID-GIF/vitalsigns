@@ -11,39 +11,59 @@ services:
     volumes:
       - ./db:/docker-entrypoint-initdb.d
     restart: always
-    # El healthcheck verifica que MySQL esté listo para recibir consultas
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-padmin"]
       timeout: 5s
       interval: 5s
       retries: 10
 
+  emqx:
+    image: emqx/emqx:5.1.0
+    container_name: vitales_broker
+    environment:
+      - EMQX_NODE__COOKIE=vitales_secret_cookie
+    ports:
+      - "1883:1883"
+      - "18083:18083"
+      - "8083:8083"
+    restart: always
+    healthcheck:
+      test: ["CMD", "emqx", "ping"]
+      timeout: 5s
+      interval: 5s
+      retries: 10
+
   backend:
-    build: ./backend
+    build: ./Backend
     container_name: vitales_backend
-    # Ahora espera a que la DB esté "Sana" (Healthy), no solo encendida
+    environment:
+      - DB_HOST=vitales_db
+      - DB_USER=root
+      - DB_PASSWORD=admin
+      - DB_NAME=hospital_db
+      - DB_PORT=3306
+      - MQTT_BROKER=emqx
+      - MQTT_PORT=1883
+      - MQTT_TOPIC=esp32/temperatura
     depends_on:
       vitales_db:
+        condition: service_healthy
+      emqx:
         condition: service_healthy
     restart: always
 
   frontend:
     build: ./frontend
     container_name: vitales_frontend
+    environment:
+      - DB_HOST=vitales_db
+      - DB_USER=root
+      - DB_PASSWORD=admin
+      - DB_NAME=hospital_db
+      - DB_PORT=3306
     ports:
       - "8501:8501"
     depends_on:
       vitales_db:
         condition: service_healthy
-    restart: always
-
-  emqx:
-    image: emqx/emqx:5.1.0
-    container_name: vitales_broker
-    environment:
-      - "EMQX_NODE__COOKIE=vitales_secret_cookie"
-    ports:
-      - "1883:1883"
-      - "18083:18083"
-      - "8083:8083"
     restart: always

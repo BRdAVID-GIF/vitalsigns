@@ -1,6 +1,3 @@
-CREATE DATABASE IF NOT EXISTS hospital_db;
-USE hospital_db;
-
 CREATE TABLE IF NOT EXISTS lecturas (
     id INT AUTO_INCREMENT PRIMARY KEY,
     temp_ambiente FLOAT NOT NULL,
