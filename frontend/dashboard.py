@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import os
+import anthropic
 from sqlalchemy import create_engine, text
 
 st.set_page_config(page_title="Monitor Vitales Pro", layout="wide")
@@ -10,17 +11,28 @@ st.markdown("""
     <style>
     .main { background-color: #0e1117; }
     .stMetric { background-color: #1a1c24; padding: 15px; border-radius: 10px; }
+    .alerta-box {
+        background-color: #1a1c24;
+        border-radius: 12px;
+        padding: 20px;
+        margin-top: 20px;
+        border-left: 4px solid #00ff00;
+    }
+    .alerta-box.riesgo {
+        border-left: 4px solid #ff4b4b;
+    }
     </style>
     """, unsafe_allow_html=True)
 
 st.title("🏥 Sistema de Monitoreo de Signos Vitales")
 
-# --- CONEXIÓN DB con connection pooling ---
+# --- CONEXIÓN DB ---
 DB_HOST = os.environ.get("DB_HOST", "vitales_db")
 DB_USER = os.environ.get("DB_USER", "root")
 DB_PASSWORD = os.environ.get("DB_PASSWORD", "admin")
 DB_NAME = os.environ.get("DB_NAME", "hospital_db")
 DB_PORT = os.environ.get("DB_PORT", "3306")
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 
 @st.cache_resource
@@ -29,7 +41,7 @@ def get_engine():
         f"mysql+mysqlconnector://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}",
         pool_size=2,
         pool_recycle=60,
-        pool_pre_ping=True  # verifica conexión antes de usarla
+        pool_pre_ping=True
     )
 
 
@@ -51,7 +63,70 @@ def get_data():
         return pd.DataFrame()
 
 
-# --- FRAGMENTO: solo esta parte se refresca cada 2 segundos ---
+def analizar_con_ia(df: pd.DataFrame) -> dict:
+    """
+    Le pasa los últimos datos al agente Claude y devuelve:
+    - nivel: NORMAL | PRECAUCIÓN | ALERTA
+    - mensaje: análisis en lenguaje natural
+    """
+    try:
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+
+        ultima = df.iloc[0]
+        promedio_corp = df['temp_corporal'].mean()
+        promedio_amb = df['temp_ambiente'].mean()
+        max_corp = df['temp_corporal'].max()
+        min_corp = df['temp_corporal'].min()
+        tendencia = df['temp_corporal'].iloc[0] - df['temp_corporal'].iloc[-1]
+        historial = df[['temp_corporal', 'temp_ambiente', 'fecha']].to_string(index=False)
+
+        prompt = f"""Eres un asistente médico especializado en monitoreo de signos vitales.
+Analiza los siguientes datos de temperatura de un paciente y da una alerta inteligente.
+
+=== DATOS ACTUALES ===
+Temperatura corporal actual: {ultima['temp_corporal']} °C
+Temperatura ambiente actual: {ultima['temp_ambiente']} °C
+
+=== ESTADÍSTICAS DE LAS ÚLTIMAS 30 LECTURAS ===
+Promedio corporal: {promedio_corp:.2f} °C
+Máxima corporal: {max_corp:.2f} °C
+Mínima corporal: {min_corp:.2f} °C
+Tendencia (subiendo/bajando): {tendencia:+.2f} °C
+
+=== HISTORIAL ===
+{historial}
+
+=== INSTRUCCIONES ===
+Responde ÚNICAMENTE en este formato JSON exacto, sin texto extra:
+{{
+  "nivel": "NORMAL" | "PRECAUCIÓN" | "ALERTA",
+  "mensaje": "Tu análisis en 2-3 oraciones en español, mencionando tendencia y recomendación."
+}}
+
+Criterios:
+- NORMAL: temp corporal entre 36.0 y 37.4 °C, sin tendencia preocupante
+- PRECAUCIÓN: temp entre 37.5 y 38.0 °C, o tendencia de subida sostenida
+- ALERTA: temp mayor a 38.0 °C o menor a 35.5 °C
+"""
+
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=300,
+            messages=[{"role": "user", "content": prompt}]
+        )
+
+        import json
+        resultado = json.loads(response.content[0].text)
+        return resultado
+
+    except Exception as e:
+        return {
+            "nivel": "NORMAL",
+            "mensaje": f"Agente IA no disponible: {e}"
+        }
+
+
+# --- FRAGMENTO PRINCIPAL ---
 @st.fragment(run_every=2)
 def dashboard():
     df = get_data()
@@ -69,9 +144,9 @@ def dashboard():
             f"<h3 style='text-align:center; color:{color}'>{estado}</h3>",
             unsafe_allow_html=True
         )
-
         col3.metric("TEMP. AMBIENTE", f"{val_amb} °C")
 
+        # --- GRÁFICA ---
         fig = go.Figure()
         fig.add_trace(go.Scatter(
             x=df['id'],
@@ -85,9 +160,34 @@ def dashboard():
             height=350,
             margin=dict(l=10, r=10, t=30, b=10)
         )
-
         st.plotly_chart(fig, use_container_width=True)
 
+        # --- AGENTE IA ---
+        st.markdown("### 🤖 Análisis del Agente IA")
+        with st.spinner("Analizando datos..."):
+            analisis = analizar_con_ia(df)
+
+        nivel = analisis.get("nivel", "NORMAL")
+        mensaje = analisis.get("mensaje", "")
+
+        iconos = {"NORMAL": "✅", "PRECAUCIÓN": "⚠️", "ALERTA": "🚨"}
+        colores_nivel = {
+            "NORMAL": "#00ff00",
+            "PRECAUCIÓN": "#ffaa00",
+            "ALERTA": "#ff4b4b"
+        }
+        css_class = "riesgo" if nivel == "ALERTA" else ""
+        icono = iconos.get(nivel, "✅")
+        color_niv = colores_nivel.get(nivel, "#00ff00")
+
+        st.markdown(f"""
+            <div class="alerta-box {css_class}">
+                <h3 style="color:{color_niv}; margin:0">{icono} {nivel}</h3>
+                <p style="color:#cccccc; margin-top:10px; font-size:16px">{mensaje}</p>
+            </div>
+        """, unsafe_allow_html=True)
+
+        # --- HISTORIAL ---
         with st.expander("Ver registro de lecturas"):
             st.dataframe(df, use_container_width=True)
 
