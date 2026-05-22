@@ -3,4 +3,4 @@ pandas
 plotly
 sqlalchemy
 mysql-connector-python
-anthropic
+google-generativeai

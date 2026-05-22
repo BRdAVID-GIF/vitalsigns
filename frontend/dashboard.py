@@ -2,7 +2,8 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import os
-import anthropic
+import json
+import google.generativeai as genai
 from sqlalchemy import create_engine, text
 
 st.set_page_config(page_title="Monitor Vitales Pro", layout="wide")
@@ -32,7 +33,7 @@ DB_USER = os.environ.get("DB_USER", "root")
 DB_PASSWORD = os.environ.get("DB_PASSWORD", "admin")
 DB_NAME = os.environ.get("DB_NAME", "hospital_db")
 DB_PORT = os.environ.get("DB_PORT", "3306")
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
 
 @st.cache_resource
@@ -65,16 +66,16 @@ def get_data():
 
 def analizar_con_ia(df: pd.DataFrame) -> dict:
     """
-    Le pasa los últimos datos al agente Claude y devuelve:
+    Le pasa los últimos datos a Gemini y devuelve:
     - nivel: NORMAL | PRECAUCIÓN | ALERTA
     - mensaje: análisis en lenguaje natural
     """
     try:
-        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        genai.configure(api_key=GEMINI_API_KEY)
+        model = genai.GenerativeModel("gemini-1.5-flash")
 
         ultima = df.iloc[0]
         promedio_corp = df['temp_corporal'].mean()
-        promedio_amb = df['temp_ambiente'].mean()
         max_corp = df['temp_corporal'].max()
         min_corp = df['temp_corporal'].min()
         tendencia = df['temp_corporal'].iloc[0] - df['temp_corporal'].iloc[-1]
@@ -97,11 +98,13 @@ Tendencia (subiendo/bajando): {tendencia:+.2f} °C
 {historial}
 
 === INSTRUCCIONES ===
-Responde ÚNICAMENTE en este formato JSON exacto, sin texto extra:
+Responde ÚNICAMENTE en este formato JSON exacto, sin texto extra, sin backticks:
 {{
-  "nivel": "NORMAL" | "PRECAUCIÓN" | "ALERTA",
+  "nivel": "NORMAL",
   "mensaje": "Tu análisis en 2-3 oraciones en español, mencionando tendencia y recomendación."
 }}
+
+El campo "nivel" debe ser exactamente uno de: NORMAL, PRECAUCIÓN, ALERTA
 
 Criterios:
 - NORMAL: temp corporal entre 36.0 y 37.4 °C, sin tendencia preocupante
@@ -109,14 +112,11 @@ Criterios:
 - ALERTA: temp mayor a 38.0 °C o menor a 35.5 °C
 """
 
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=300,
-            messages=[{"role": "user", "content": prompt}]
-        )
-
-        import json
-        resultado = json.loads(response.content[0].text)
+        response = model.generate_content(prompt)
+        texto = response.text.strip()
+        # Limpiar posibles backticks que Gemini a veces agrega
+        texto = texto.replace("```json", "").replace("```", "").strip()
+        resultado = json.loads(texto)
         return resultado
 
     except Exception as e:
