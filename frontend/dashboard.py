@@ -4,7 +4,7 @@ import plotly.graph_objects as go
 import os
 import json
 import time
-import google.generativeai as genai
+from groq import Groq
 from sqlalchemy import create_engine, text
 
 st.set_page_config(page_title="Monitor Vitales Pro", layout="wide")
@@ -34,7 +34,7 @@ DB_USER = os.environ.get("DB_USER", "root")
 DB_PASSWORD = os.environ.get("DB_PASSWORD", "admin")
 DB_NAME = os.environ.get("DB_NAME", "hospital_db")
 DB_PORT = os.environ.get("DB_PORT", "3306")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
 
 @st.cache_resource
@@ -67,8 +67,7 @@ def get_data():
 
 def analizar_con_ia(df: pd.DataFrame) -> dict:
     try:
-        genai.configure(api_key=GEMINI_API_KEY)
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        client = Groq(api_key=GROQ_API_KEY)
 
         ultima = df.iloc[0]
         promedio_corp = df['temp_corporal'].mean()
@@ -108,8 +107,13 @@ Criterios:
 - ALERTA: temp mayor a 38.0 °C o menor a 35.5 °C
 """
 
-        response = model.generate_content(prompt)
-        texto = response.text.strip()
+        response = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            max_tokens=300,
+            messages=[{"role": "user", "content": prompt}]
+        )
+
+        texto = response.choices[0].message.content.strip()
         texto = texto.replace("```json", "").replace("```", "").strip()
         resultado = json.loads(texto)
         return resultado
@@ -174,7 +178,6 @@ def dashboard():
         nivel = analisis.get("nivel", "NORMAL")
         mensaje = analisis.get("mensaje", "")
 
-        # Tiempo restante para próximo análisis
         if "ultima_ia" in st.session_state:
             restante = max(0, 30 - int(ahora - st.session_state["ultima_ia"]))
             st.caption(f"⏱ Próximo análisis en {restante}s")
@@ -196,7 +199,6 @@ def dashboard():
             </div>
         """, unsafe_allow_html=True)
 
-        # --- HISTORIAL ---
         with st.expander("Ver registro de lecturas"):
             st.dataframe(df, use_container_width=True)
 
