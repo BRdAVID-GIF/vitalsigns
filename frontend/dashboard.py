@@ -72,7 +72,7 @@ def analizar_con_ia(df: pd.DataFrame) -> dict:
     """
     try:
         genai.configure(api_key=GEMINI_API_KEY)
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.0-flash")
 
         ultima = df.iloc[0]
         promedio_corp = df['temp_corporal'].mean()
