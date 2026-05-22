@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import os
 import json
+import time
 import google.generativeai as genai
 from sqlalchemy import create_engine, text
 
@@ -65,11 +66,6 @@ def get_data():
 
 
 def analizar_con_ia(df: pd.DataFrame) -> dict:
-    """
-    Le pasa los últimos datos a Gemini y devuelve:
-    - nivel: NORMAL | PRECAUCIÓN | ALERTA
-    - mensaje: análisis en lenguaje natural
-    """
     try:
         genai.configure(api_key=GEMINI_API_KEY)
         model = genai.GenerativeModel("gemini-2.0-flash")
@@ -114,7 +110,6 @@ Criterios:
 
         response = model.generate_content(prompt)
         texto = response.text.strip()
-        # Limpiar posibles backticks que Gemini a veces agrega
         texto = texto.replace("```json", "").replace("```", "").strip()
         resultado = json.loads(texto)
         return resultado
@@ -162,13 +157,27 @@ def dashboard():
         )
         st.plotly_chart(fig, use_container_width=True)
 
-        # --- AGENTE IA ---
+        # --- AGENTE IA (solo cada 30 segundos) ---
         st.markdown("### 🤖 Análisis del Agente IA")
-        with st.spinner("Analizando datos..."):
-            analisis = analizar_con_ia(df)
+
+        ahora = time.time()
+        if "ultima_ia" not in st.session_state or ahora - st.session_state["ultima_ia"] > 30:
+            st.session_state["ultima_ia"] = ahora
+            with st.spinner("Analizando datos..."):
+                st.session_state["analisis_ia"] = analizar_con_ia(df)
+
+        analisis = st.session_state.get("analisis_ia", {
+            "nivel": "NORMAL",
+            "mensaje": "Esperando primer análisis..."
+        })
 
         nivel = analisis.get("nivel", "NORMAL")
         mensaje = analisis.get("mensaje", "")
+
+        # Tiempo restante para próximo análisis
+        if "ultima_ia" in st.session_state:
+            restante = max(0, 30 - int(ahora - st.session_state["ultima_ia"]))
+            st.caption(f"⏱ Próximo análisis en {restante}s")
 
         iconos = {"NORMAL": "✅", "PRECAUCIÓN": "⚠️", "ALERTA": "🚨"}
         colores_nivel = {
