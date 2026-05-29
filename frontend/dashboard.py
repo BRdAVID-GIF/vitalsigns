@@ -162,7 +162,7 @@ def dashboard():
         st.plotly_chart(fig, use_container_width=True)
 
         # --- AGENTE IA (solo cada 30 segundos) ---
-        st.markdown("### 🤖 Análisis del Agente IA")
+        st.markdown("###  Análisis del Agente IA")
 
         ahora = time.time()
         if "ultima_ia" not in st.session_state or ahora - st.session_state["ultima_ia"] > 30:

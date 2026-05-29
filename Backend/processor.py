@@ -29,10 +29,10 @@ def get_db_connection():
                 database=DB_NAME,
                 port=DB_PORT
             )
-            print("✅ Conectado a MySQL exitosamente!")
+            print(" Conectado a MySQL exitosamente!")
             return conn
         except mysql.connector.Error as err:
-            print(f"❌ Error de conexión DB: {err}. Reintentando en 3 segundos...")
+            print(f" Error de conexión DB: {err}. Reintentando en 3 segundos...")
             time.sleep(3)
 
 
@@ -44,18 +44,18 @@ db = get_db_connection()
 
 def on_connect(client, userdata, flags, reason_code, properties):
     if reason_code == 0:
-        print("✅ Conectado al broker MQTT!")
+        print(" Conectado al broker MQTT!")
         client.subscribe(MQTT_TOPIC)
         print(f"📡 Suscrito a '{MQTT_TOPIC}'")
     else:
-        print(f"❌ Falló conexión al broker, código: {reason_code}")
+        print(f" Falló conexión al broker, código: {reason_code}")
 
 
 def on_message(client, userdata, msg):
     global db
     try:
         if not db.is_connected():
-            print("⚠️ Conexión perdida con DB. Reconectando...")
+            print("⚠ Conexión perdida con DB. Reconectando...")
             db = get_db_connection()
 
         data = json.loads(msg.payload.decode())
@@ -66,15 +66,15 @@ def on_message(client, userdata, msg):
             query = "INSERT INTO lecturas (temp_ambiente, temp_corporal) VALUES (%s, %s)"
             cursor.execute(query, (temp_amb, temp_corp))
             db.commit()
-            print(f"📥 Datos guardados: temp_amb={temp_amb}, temp_corp={temp_corp}")
+            print(f" Datos guardados: temp_amb={temp_amb}, temp_corp={temp_corp}")
 
     except mysql.connector.Error as db_err:
-        print(f"⚠️ Error de base de datos: {db_err}")
+        print(f"⚠ Error de base de datos: {db_err}")
         db.rollback()
     except json.JSONDecodeError as je:
-        print(f"❗ JSON inválido recibido: {je}")
+        print(f" JSON inválido recibido: {je}")
     except Exception as e:
-        print(f"❗ Error inesperado: {e}")
+        print(f" Error inesperado: {e}")
 
 
 # --- INICIALIZACIÓN DEL CLIENTE MQTT ---
@@ -87,11 +87,11 @@ client.on_message = on_message
 def start_mqtt():
     while True:
         try:
-            print(f"🔄 Conectando al broker '{MQTT_BROKER}:{MQTT_PORT}'...")
+            print(f" Conectando al broker '{MQTT_BROKER}:{MQTT_PORT}'...")
             client.connect(MQTT_BROKER, MQTT_PORT, 60)
             client.loop_forever()
         except Exception as e:
-            print(f"❌ Error de conexión al broker: {e}. Reintentando en 5 segundos...")
+            print(f" Error de conexión al broker: {e}. Reintentando en 5 segundos...")
             try:
                 client.disconnect()
             except:
