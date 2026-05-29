@@ -26,7 +26,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🏥 Sistema de Monitoreo de Signos Vitales")
+st.title(" Sistema de Monitoreo de Signos Vitales")
 
 # --- CONEXIÓN DB ---
 DB_HOST = os.environ.get("DB_HOST", "vitales_db")
@@ -160,6 +160,7 @@ def dashboard():
             margin=dict(l=10, r=10, t=30, b=10)
         )
         st.plotly_chart(fig, use_container_width=True)
+
 
         # --- AGENTE IA (solo cada 30 segundos) ---
         st.markdown("###  Análisis del Agente IA")
