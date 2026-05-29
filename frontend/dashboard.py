@@ -73,49 +73,62 @@ def analizar_con_ia(df: pd.DataFrame) -> dict:
         promedio_corp = df['temp_corporal'].mean()
         max_corp = df['temp_corporal'].max()
         min_corp = df['temp_corporal'].min()
-        tendencia = df['temp_corporal'].iloc[0] - df['temp_corporal'].iloc[-1]
-        historial = df[['temp_corporal', 'temp_ambiente', 'fecha']].to_string(index=False)
+        promedio_amb = df['temp_ambiente'].mean()
+        tendencia_reciente = df['temp_corporal'].iloc[:5].mean() - df['temp_corporal'].iloc[-5:].mean()
+        variabilidad = df['temp_corporal'].std()
+        diff_corp_amb = ultima['temp_corporal'] - ultima['temp_ambiente']
+        ultimas_10 = df[['temp_corporal', 'temp_ambiente', 'fecha']].head(10).to_string(index=False)
 
-        prompt = f"""Eres un asistente médico especializado en monitoreo de signos vitales.
-Analiza los siguientes datos de temperatura de un paciente y da una alerta inteligente.
+        system_prompt = """Eres un sistema experto de monitoreo clínico de signos vitales integrado en un hospital.
+Tu función es analizar datos de temperatura en tiempo real y emitir alertas precisas y accionables.
+Debes responder ÚNICAMENTE con JSON válido, sin texto extra, sin backticks, sin explicaciones fuera del JSON."""
 
-=== DATOS ACTUALES ===
-Temperatura corporal actual: {ultima['temp_corporal']} °C
-Temperatura ambiente actual: {ultima['temp_ambiente']} °C
+        prompt = f"""Analiza el estado clínico del paciente con base en los siguientes datos de temperatura:
 
-=== ESTADÍSTICAS DE LAS ÚLTIMAS 30 LECTURAS ===
-Promedio corporal: {promedio_corp:.2f} °C
-Máxima corporal: {max_corp:.2f} °C
-Mínima corporal: {min_corp:.2f} °C
-Tendencia (subiendo/bajando): {tendencia:+.2f} °C
+=== LECTURA ACTUAL ===
+- Temperatura corporal: {ultima['temp_corporal']:.2f} °C
+- Temperatura ambiente: {ultima['temp_ambiente']:.2f} °C
+- Diferencia cuerpo-ambiente: {diff_corp_amb:.2f} °C
 
-=== HISTORIAL ===
-{historial}
+=== ESTADÍSTICAS (últimas 30 lecturas) ===
+- Promedio corporal: {promedio_corp:.2f} °C
+- Máxima corporal: {max_corp:.2f} °C
+- Mínima corporal: {min_corp:.2f} °C
+- Promedio ambiente: {promedio_amb:.2f} °C
+- Tendencia reciente (últimas 5 vs primeras 5): {tendencia_reciente:+.2f} °C
+- Variabilidad (desv. estándar): {variabilidad:.3f} °C
 
-=== INSTRUCCIONES ===
-Responde ÚNICAMENTE en este formato JSON exacto, sin texto extra, sin backticks:
+=== ÚLTIMAS 10 LECTURAS ===
+{ultimas_10}
+
+=== CRITERIOS DE CLASIFICACIÓN ===
+- NORMAL: temp corporal 36.0-37.4 °C, tendencia estable (tendencia menor a 0.3 °C), variabilidad baja
+- PRECAUCIÓN: temp 37.5-38.0 °C, O tendencia de subida sostenida (mayor a +0.3 °C), O variabilidad alta (mayor a 0.4 °C)
+- ALERTA: temp mayor a 38.0 °C (fiebre), O temp menor a 35.5 °C (hipotermia), O variabilidad muy alta (mayor a 0.8 °C)
+
+Responde SOLO con este JSON exacto:
 {{
   "nivel": "NORMAL",
-  "mensaje": "Tu análisis en 2-3 oraciones en español, mencionando tendencia y recomendación."
-}}
-
-El campo "nivel" debe ser exactamente uno de: NORMAL, PRECAUCIÓN, ALERTA
-
-Criterios:
-- NORMAL: temp corporal entre 36.0 y 37.4 °C, sin tendencia preocupante
-- PRECAUCIÓN: temp entre 37.5 y 38.0 °C, o tendencia de subida sostenida
-- ALERTA: temp mayor a 38.0 °C o menor a 35.5 °C
-"""
+  "mensaje": "Análisis clínico en 2-3 oraciones en español. Menciona: valor actual, tendencia observada, y recomendación concreta para el personal de enfermería."
+}}"""
 
         response = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            max_tokens=300,
-            messages=[{"role": "user", "content": prompt}]
+            model="llama-3.3-70b-versatile",
+            max_tokens=400,
+            temperature=0.2,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt}
+            ]
         )
 
         texto = response.choices[0].message.content.strip()
         texto = texto.replace("```json", "").replace("```", "").strip()
         resultado = json.loads(texto)
+
+        if resultado.get("nivel") not in ("NORMAL", "PRECAUCIÓN", "ALERTA"):
+            resultado["nivel"] = "NORMAL"
+
         return resultado
 
     except Exception as e:
@@ -150,14 +163,32 @@ def dashboard():
         fig.add_trace(go.Scatter(
             x=df['id'],
             y=df['temp_corporal'],
+            name='Temp. Corporal',
             mode='lines+markers',
             line=dict(color=color, width=3),
-            fill='tozeroy'
+            fill='tozeroy',
+            fillcolor='rgba(0,255,0,0.05)' if estado == "NORMAL" else 'rgba(255,75,75,0.05)'
+        ))
+        fig.add_trace(go.Scatter(
+            x=df['id'],
+            y=df['temp_ambiente'],
+            name='Temp. Ambiente',
+            mode='lines+markers',
+            line=dict(color='#00bfff', width=2, dash='dot'),
         ))
         fig.update_layout(
             template="plotly_dark",
             height=350,
-            margin=dict(l=10, r=10, t=30, b=10)
+            margin=dict(l=10, r=10, t=30, b=10),
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            ),
+            yaxis=dict(title="Temperatura (°C)"),
+            xaxis=dict(title="Lectura")
         )
         st.plotly_chart(fig, use_container_width=True)
 
